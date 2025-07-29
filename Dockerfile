@@ -1,13 +1,8 @@
-ARG base_image=cgr.dev/chainguard/wolfi-base
+ARG base_image
 ARG builder_image=concourse/golang-builder
 
 ARG BUILDPLATFORM
-FROM --platform=${BUILDPLATFORM} ${builder_image} AS builder
-
-ARG TARGETOS
-ARG TARGETARCH
-ENV GOOS=$TARGETOS
-ENV GOARCH=$TARGETARCH
+FROM ${builder_image} AS builder
 
 COPY . /src
 WORKDIR /src
@@ -17,7 +12,7 @@ RUN go build -o /assets/out ./cmd/out
 RUN go build -o /assets/in ./cmd/in
 RUN go build -o /assets/check ./cmd/check
 RUN set -e; for pkg in $(go list ./...); do \
-		go test -o "/tests/$(basename $pkg).test" -c $pkg; \
+	go test -o "/tests/$(basename $pkg).test" -c $pkg; \
 	done
 
 FROM ${base_image} AS resource
@@ -26,7 +21,7 @@ COPY --from=builder /assets /opt/resource
 FROM resource AS tests
 COPY --from=builder /tests /tests
 RUN set -e; for test in /tests/*.test; do \
-		$test; \
+	$test; \
 	done
 
 FROM resource
