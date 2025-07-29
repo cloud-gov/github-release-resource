@@ -1,7 +1,6 @@
 ARG base_image
 ARG builder_image=concourse/golang-builder
 
-ARG BUILDPLATFORM
 FROM ${builder_image} AS builder
 
 COPY . /src
