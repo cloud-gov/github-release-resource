@@ -11,14 +11,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/google/go-github/v39/github"
+	"github.com/google/go-github/v66/github"
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
 )
 
-// Last run with counterfeiter v6
-//go:generate counterfeiter -o fakes/fake_git_hub.go . GitHub
-
+//go:generate go run github.com/maxbrunsfeld/counterfeiter/v6 -o fakes/fake_git_hub.go . GitHub
 type GitHub interface {
 	ListReleases() ([]*github.RepositoryRelease, error)
 	GetReleaseByTag(tag string) (*github.RepositoryRelease, error)
@@ -47,8 +45,8 @@ type GitHubClient struct {
 }
 
 func NewGitHubClient(source Source) (*GitHubClient, error) {
-	var httpClient = &http.Client{}
-	var ctx = context.TODO()
+	httpClient := &http.Client{}
+	ctx := context.TODO()
 
 	if source.Insecure {
 		httpClient.Transport = &http.Transport{
@@ -214,17 +212,24 @@ func (g *GitHubClient) UpdateRelease(release github.RepositoryRelease) (*github.
 
 func (g *GitHubClient) ListReleaseAssets(release github.RepositoryRelease) ([]*github.ReleaseAsset, error) {
 	opt := &github.ListOptions{PerPage: 100}
-	assets, res, err := g.client.Repositories.ListReleaseAssets(context.TODO(), g.owner, g.repository, *release.ID, opt)
-	if err != nil {
-		return nil, err
+	var allAssets []*github.ReleaseAsset
+	for {
+		assets, res, err := g.client.Repositories.ListReleaseAssets(context.TODO(), g.owner, g.repository, *release.ID, opt)
+		if err != nil {
+			return []*github.ReleaseAsset{}, err
+		}
+		allAssets = append(allAssets, assets...)
+		if res.NextPage == 0 {
+			err = res.Body.Close()
+			if err != nil {
+				return nil, err
+			}
+			break
+		}
+		opt.Page = res.NextPage
 	}
 
-	err = res.Body.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return assets, nil
+	return allAssets, nil
 }
 
 func (g *GitHubClient) UploadReleaseAsset(release github.RepositoryRelease, name string, file *os.File) error {
@@ -289,7 +294,7 @@ func (g *GitHubClient) DownloadReleaseAsset(asset github.ReleaseAsset) (io.ReadC
 
 func (g *GitHubClient) GetTarballLink(tag string) (*url.URL, error) {
 	opt := &github.RepositoryContentGetOptions{Ref: tag}
-	u, res, err := g.client.Repositories.GetArchiveLink(context.TODO(), g.owner, g.repository, github.Tarball, opt, true)
+	u, res, err := g.client.Repositories.GetArchiveLink(context.TODO(), g.owner, g.repository, github.Tarball, opt, 10)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +304,7 @@ func (g *GitHubClient) GetTarballLink(tag string) (*url.URL, error) {
 
 func (g *GitHubClient) GetZipballLink(tag string) (*url.URL, error) {
 	opt := &github.RepositoryContentGetOptions{Ref: tag}
-	u, res, err := g.client.Repositories.GetArchiveLink(context.TODO(), g.owner, g.repository, github.Zipball, opt, true)
+	u, res, err := g.client.Repositories.GetArchiveLink(context.TODO(), g.owner, g.repository, github.Zipball, opt, 10)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +314,6 @@ func (g *GitHubClient) GetZipballLink(tag string) (*url.URL, error) {
 
 func (g *GitHubClient) ResolveTagToCommitSHA(tagName string) (string, error) {
 	ref, res, err := g.client.Git.GetRef(context.TODO(), g.owner, g.repository, "tags/"+tagName)
-
 	if err != nil {
 		return "", err
 	}
@@ -328,7 +332,6 @@ func (g *GitHubClient) ResolveTagToCommitSHA(tagName string) (string, error) {
 
 	// Resolve tag to commit sha
 	tag, res, err := g.client.Git.GetTag(context.TODO(), g.owner, g.repository, *ref.Object.SHA)
-
 	if err != nil {
 		return "", err
 	}

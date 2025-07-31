@@ -2,16 +2,17 @@ package resource_test
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	. "github.com/concourse/github-release-resource"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/google/go-github/v39/github"
+	"github.com/google/go-github/v66/github"
 	"github.com/onsi/gomega/ghttp"
 )
 
@@ -275,9 +276,36 @@ var _ = Describe("GitHub Client", func() {
 				Expect(releases).To(HaveLen(3))
 				Expect(server.ReceivedRequests()).To(HaveLen(2))
 				Expect(releases).To(Equal([]*github.RepositoryRelease{
-					{TagName: github.String("xyz"), Name: github.String("xyz"), Draft: github.Bool(false), Prerelease: github.Bool(false), ID: github.Int64(32095103), CreatedAt: &github.Timestamp{time.Date(2010, time.October, 01, 00, 58, 07, 0, time.UTC)}, PublishedAt: &github.Timestamp{time.Date(2010, time.October, 02, 15, 39, 53, 0, time.UTC)}, URL: github.String("https://github.com/xyz/xyz/releases/tag/xyz")},
-					{TagName: github.String("xyz"), Name: github.String("xyz"), Draft: github.Bool(false), Prerelease: github.Bool(false), ID: github.Int64(30230659), CreatedAt: &github.Timestamp{time.Date(2010, time.August, 27, 13, 55, 36, 0, time.UTC)}, PublishedAt: &github.Timestamp{time.Date(2010, time.August, 27, 17, 18, 06, 0, time.UTC)}, URL: github.String("https://github.com/xyz/xyz/releases/tag/xyz")},
-					{TagName: github.String("xyq"), Name: github.String("xyq"), Draft: github.Bool(false), Prerelease: github.Bool(false), ID: github.Int64(33222243), CreatedAt: &github.Timestamp{time.Date(2010, time.October, 10, 01, 01, 07, 0, time.UTC)}, PublishedAt: &github.Timestamp{time.Date(2010, time.October, 10, 15, 39, 53, 0, time.UTC)}, URL: github.String("https://github.com/xyq/xyq/releases/tag/xyq")},
+					{
+						TagName:     github.String("xyz"),
+						Name:        github.String("xyz"),
+						Draft:       github.Bool(false),
+						Prerelease:  github.Bool(false),
+						ID:          github.Int64(32095103),
+						CreatedAt:   &github.Timestamp{Time: time.Date(2010, time.October, 01, 00, 58, 07, 0, time.UTC)},
+						PublishedAt: &github.Timestamp{Time: time.Date(2010, time.October, 02, 15, 39, 53, 0, time.UTC)},
+						URL:         github.String("https://github.com/xyz/xyz/releases/tag/xyz"),
+					},
+					{
+						TagName:     github.String("xyz"),
+						Name:        github.String("xyz"),
+						Draft:       github.Bool(false),
+						Prerelease:  github.Bool(false),
+						ID:          github.Int64(30230659),
+						CreatedAt:   &github.Timestamp{Time: time.Date(2010, time.August, 27, 13, 55, 36, 0, time.UTC)},
+						PublishedAt: &github.Timestamp{Time: time.Date(2010, time.August, 27, 17, 18, 06, 0, time.UTC)},
+						URL:         github.String("https://github.com/xyz/xyz/releases/tag/xyz"),
+					},
+					{
+						TagName:     github.String("xyq"),
+						Name:        github.String("xyq"),
+						Draft:       github.Bool(false),
+						Prerelease:  github.Bool(false),
+						ID:          github.Int64(33222243),
+						CreatedAt:   &github.Timestamp{Time: time.Date(2010, time.October, 10, 01, 01, 07, 0, time.UTC)},
+						PublishedAt: &github.Timestamp{Time: time.Date(2010, time.October, 10, 15, 39, 53, 0, time.UTC)},
+						URL:         github.String("https://github.com/xyq/xyq/releases/tag/xyq"),
+					},
 				}))
 			})
 		})
@@ -324,6 +352,59 @@ var _ = Describe("GitHub Client", func() {
 					releases, err := client.ListReleases()
 					Ω(err).ShouldNot(HaveOccurred())
 					Expect(releases).To(HaveLen(101))
+					Expect(server.ReceivedRequests()).To(HaveLen(2))
+				})
+
+			})
+		})
+	})
+
+	Describe("ListReleasesAssets without access token", func() {
+		BeforeEach(func() {
+			source = Source{
+				Owner:      "concourse",
+				Repository: "concourse",
+			}
+		})
+		Context("When list of assets return less than 100 items", func() {
+			BeforeEach(func() {
+				var result []*github.ReleaseAsset
+				for i := 1; i <= 50; i++ {
+					result = append(result, &github.ReleaseAsset{ID: github.Int64(int64(i))})
+				}
+				server.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", "/repos/concourse/concourse/releases/1/assets", "per_page=100"),
+						ghttp.RespondWithJSONEncoded(200, result),
+					),
+				)
+			})
+			It("lists all release assets", func() {
+				releasesAssets, err := client.ListReleaseAssets(github.RepositoryRelease{ID: github.Int64(1)})
+				Ω(err).ShouldNot(HaveOccurred())
+				Expect(releasesAssets).To(HaveLen(50))
+				Expect(server.ReceivedRequests()).To(HaveLen(1))
+			})
+		})
+		Context("When list of assets return more then 100 items", func() {
+			Context("List graphql releases", func() {
+				BeforeEach(func() {
+					var result []*github.ReleaseAsset
+					for i := 1; i <= 102; i++ {
+						result = append(result, &github.ReleaseAsset{ID: github.Int64(int64(i))})
+					}
+					server.AppendHandlers(
+						ghttp.CombineHandlers(ghttp.VerifyRequest("GET", "/repos/concourse/concourse/releases/1/assets", "per_page=100"),
+							ghttp.RespondWithJSONEncoded(200, result[:100], http.Header{"Link": []string{`</releases/1/assets?page=2>; rel="next"`}}),
+						),
+						ghttp.CombineHandlers(ghttp.VerifyRequest("GET", "/repos/concourse/concourse/releases/1/assets", "per_page=100&page=2"),
+							ghttp.RespondWithJSONEncoded(200, result[100:])),
+					)
+				})
+				It("list release assets", func() {
+					releasesAssets, err := client.ListReleaseAssets(github.RepositoryRelease{ID: github.Int64(1)})
+					Ω(err).ShouldNot(HaveOccurred())
+					Expect(releasesAssets).To(HaveLen(102))
 					Expect(server.ReceivedRequests()).To(HaveLen(2))
 				})
 
@@ -573,7 +654,7 @@ var _ = Describe("GitHub Client", func() {
 					Expect(err).NotTo(HaveOccurred())
 					defer readCloser.Close()
 
-					body, err := ioutil.ReadAll(readCloser)
+					body, err := io.ReadAll(readCloser)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(body)).To(Equal(fileContents))
 				})
@@ -612,7 +693,7 @@ var _ = Describe("GitHub Client", func() {
 					Expect(err).NotTo(HaveOccurred())
 					defer readCloser.Close()
 
-					body, err := ioutil.ReadAll(readCloser)
+					body, err := io.ReadAll(readCloser)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(body)).To(Equal(redirectFileContents))
 				})
@@ -634,7 +715,7 @@ var _ = Describe("GitHub Client", func() {
 					Expect(err).NotTo(HaveOccurred())
 					defer readCloser.Close()
 
-					body, err := ioutil.ReadAll(readCloser)
+					body, err := io.ReadAll(readCloser)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(body)).To(Equal(redirectFileContents))
 				})
@@ -649,8 +730,11 @@ var _ = Describe("GitHub Client", func() {
 
 				BeforeEach(func() {
 					externalServer = ghttp.NewServer()
+					u, err := url.Parse(externalServer.URL())
+					Expect(err).NotTo(HaveOccurred())
+					externalUrl := fmt.Sprintf("http://localhost:%s", u.Port())
 
-					appendGetHandler(server, redirectPath, 307, "", true, locationHeader(externalServer.URL()+"/somewhere-else"))
+					appendGetHandler(server, redirectPath, 307, "", true, locationHeader(externalUrl+"/somewhere-else"))
 					appendGetHandler(externalServer, "/somewhere-else", 200, redirectFileContents, false)
 				})
 
@@ -659,7 +743,7 @@ var _ = Describe("GitHub Client", func() {
 					Expect(err).NotTo(HaveOccurred())
 					defer readCloser.Close()
 
-					body, err := ioutil.ReadAll(readCloser)
+					body, err := io.ReadAll(readCloser)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(body)).To(Equal(redirectFileContents))
 				})
@@ -741,7 +825,7 @@ var _ = Describe("GitHub Client", func() {
 				Expect(err).NotTo(HaveOccurred())
 				defer readCloser.Close()
 
-				body, err := ioutil.ReadAll(readCloser)
+				body, err := io.ReadAll(readCloser)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(body)).To(Equal(redirectFileContents))
 			})
