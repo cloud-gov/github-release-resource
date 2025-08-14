@@ -2,6 +2,11 @@
 
 Fetches and creates versioned GitHub resources.
 
+<a href="https://ci.concourse-ci.org/teams/main/pipelines/resource/jobs/build?vars.type=%22github-release%22">
+  <img src="https://ci.concourse-ci.org/api/v1/teams/main/pipelines/resource/jobs/build/badge?vars.type=%22github-release%22" alt="Build Status">
+</a>
+
+
 > If you're seeing rate limits affecting you then please add a token to the source
 > configuration. This will increase your number of allowed requests.
 
@@ -64,6 +69,10 @@ Fetches and creates versioned GitHub resources.
 * `order_by`: *Optional. One of [`version`, `time`]. Default `version`.*
    Selects whether to order releases by version (as extracted by `tag_filter`)
    or by time. See `check` behavior described below for details.
+
+* `asset_dir`:  *Optional. Default `false`.* When set to `true`, downloaded assets
+  will be created in a separate directory called `assets`. Otherwise, they will be
+  created in the same directory as the other files.
 
 ### Example
 
@@ -135,7 +144,8 @@ Otherwise it returns the release with the latest version or time.
 
 ### `in`: Fetch assets from a release.
 
-Fetches artifacts from the requested release.
+Fetches artifacts from the requested release.  If `asset_dir` source param is set to `true`,
+artifacts will be created in a subdirectory called `assets`.
 
 Also creates the following files:
 
@@ -205,7 +215,7 @@ will stop the build.
 Run the tests with the following command:
 
 ```sh
-docker build -t github-release-resource --target tests --build-arg base_image=concourse/resource-types-base-image-static:latest .
+docker build -t github-release-resource --target tests .
 ```
 
 ### Contributing

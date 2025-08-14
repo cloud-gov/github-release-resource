@@ -4,13 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 
-	"github.com/google/go-github/v39/github"
+	"github.com/google/go-github/v66/github"
 )
 
 type InCommand struct {
@@ -31,6 +30,16 @@ func (c *InCommand) Run(destDir string, request InRequest) (InResponse, error) {
 		return InResponse{}, err
 	}
 
+	// if AssetDir is true, create a separate directory for assets
+	assetDir := destDir
+	if request.Source.AssetDir {
+		assetDir = filepath.Join(destDir, "assets")
+		err = os.MkdirAll(assetDir, 0755)
+		if err != nil {
+			return InResponse{}, err
+		}
+	}
+
 	var foundRelease *github.RepositoryRelease
 	var commitSHA string
 
@@ -49,7 +58,7 @@ func (c *InCommand) Run(destDir string, request InRequest) (InResponse, error) {
 
 	if foundRelease.HTMLURL != nil && *foundRelease.HTMLURL != "" {
 		urlPath := filepath.Join(destDir, "url")
-		err = ioutil.WriteFile(urlPath, []byte(*foundRelease.HTMLURL), 0644)
+		err = os.WriteFile(urlPath, []byte(*foundRelease.HTMLURL), 0644)
 		if err != nil {
 			return InResponse{}, err
 		}
@@ -57,7 +66,7 @@ func (c *InCommand) Run(destDir string, request InRequest) (InResponse, error) {
 
 	if foundRelease.TagName != nil && *foundRelease.TagName != "" {
 		tagPath := filepath.Join(destDir, "tag")
-		err = ioutil.WriteFile(tagPath, []byte(*foundRelease.TagName), 0644)
+		err = os.WriteFile(tagPath, []byte(*foundRelease.TagName), 0644)
 		if err != nil {
 			return InResponse{}, err
 		}
@@ -68,7 +77,7 @@ func (c *InCommand) Run(destDir string, request InRequest) (InResponse, error) {
 		}
 		version := versionParser.parse(*foundRelease.TagName)
 		versionPath := filepath.Join(destDir, "version")
-		err = ioutil.WriteFile(versionPath, []byte(version), 0644)
+		err = os.WriteFile(versionPath, []byte(version), 0644)
 		if err != nil {
 			return InResponse{}, err
 		}
@@ -81,7 +90,7 @@ func (c *InCommand) Run(destDir string, request InRequest) (InResponse, error) {
 			}
 
 			if commitSHA != "" {
-				err = ioutil.WriteFile(commitPath, []byte(commitSHA), 0644)
+				err = os.WriteFile(commitPath, []byte(commitSHA), 0644)
 				if err != nil {
 					return InResponse{}, err
 				}
@@ -91,7 +100,7 @@ func (c *InCommand) Run(destDir string, request InRequest) (InResponse, error) {
 		if foundRelease.Body != nil && *foundRelease.Body != "" {
 			body := *foundRelease.Body
 			bodyPath := filepath.Join(destDir, "body")
-			err = ioutil.WriteFile(bodyPath, []byte(body), 0644)
+			err = os.WriteFile(bodyPath, []byte(body), 0644)
 			if err != nil {
 				return InResponse{}, err
 			}
@@ -103,7 +112,7 @@ func (c *InCommand) Run(destDir string, request InRequest) (InResponse, error) {
 			if err != nil {
 				return InResponse{}, err
 			}
-			err = ioutil.WriteFile(timestampPath, timestamp, 0644)
+			err = os.WriteFile(timestampPath, timestamp, 0644)
 			if err != nil {
 				return InResponse{}, err
 			}
@@ -121,7 +130,7 @@ func (c *InCommand) Run(destDir string, request InRequest) (InResponse, error) {
 			continue
 		}
 
-		path := filepath.Join(destDir, *asset.Name)
+		path := filepath.Join(assetDir, *asset.Name)
 
 		var matchFound bool
 		if len(request.Params.Globs) == 0 {
@@ -158,7 +167,7 @@ func (c *InCommand) Run(destDir string, request InRequest) (InResponse, error) {
 			return InResponse{}, err
 		}
 		fmt.Fprintln(c.writer, "downloading source tarball to source.tar.gz")
-		if err := c.downloadFile(u.String(), filepath.Join(destDir, "source.tar.gz")); err != nil {
+		if err := c.downloadFile(u.String(), filepath.Join(assetDir, "source.tar.gz")); err != nil {
 			return InResponse{}, err
 		}
 	}
@@ -169,7 +178,7 @@ func (c *InCommand) Run(destDir string, request InRequest) (InResponse, error) {
 			return InResponse{}, err
 		}
 		fmt.Fprintln(c.writer, "downloading source zip to source.zip")
-		if err := c.downloadFile(u.String(), filepath.Join(destDir, "source.zip")); err != nil {
+		if err := c.downloadFile(u.String(), filepath.Join(assetDir, "source.zip")); err != nil {
 			return InResponse{}, err
 		}
 	}
